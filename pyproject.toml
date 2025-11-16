@@ -3,6 +3,7 @@ name = "fm-session-service"
 version = "0.1.0"
 description = "FaultMaven Session Management Microservice"
 authors = ["FaultMaven Team"]
+packages = [{include = "session_service", from = "src"}]
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -16,6 +17,7 @@ opentelemetry-api = "^1.20.0"
 opentelemetry-sdk = "^1.20.0"
 prometheus-client = "^0.18.0"
 python-json-logger = "^2.0.0"
+python-dotenv = "^1.0.0"
 
 
 [tool.poetry.group.dev.dependencies]
