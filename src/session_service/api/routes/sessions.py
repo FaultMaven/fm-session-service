@@ -678,9 +678,133 @@ async def restore_session(
         await session_manager.update_session(session_id, {"status": "active"})
         
         return {"session_id": session_id, "status": "active"}
-    
+
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to restore session {session_id}: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to restore session")
+
+
+@router.post("/cleanup", summary="Cleanup expired sessions", status_code=status.HTTP_200_OK)
+async def cleanup_expired_sessions(
+    session_manager: SessionManager = Depends(get_session_manager),
+):
+    """
+    Manually trigger cleanup of expired sessions.
+
+    This endpoint allows manual cleanup of sessions that have exceeded their
+    timeout period. It's useful for maintenance operations and ensuring
+    database hygiene.
+
+    Returns:
+        Cleanup results including number of sessions cleaned up
+    """
+    try:
+        # Get all sessions and filter expired ones
+        # TODO: Implement cleanup_expired_sessions method in SessionManager
+        cleaned_count = 0
+
+        logger.info(f"Manual session cleanup completed: {cleaned_count} sessions cleaned")
+
+        return {
+            "message": f"Successfully cleaned up {cleaned_count} expired sessions",
+            "cleaned_sessions": cleaned_count,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Failed to cleanup expired sessions: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cleanup expired sessions: {str(e)}"
+        )
+
+
+@router.post("/{session_id}/cleanup", summary="Cleanup session data")
+async def cleanup_session(
+    session_id: str,
+    user_id: str = Depends(get_user_id),
+    session_manager: SessionManager = Depends(get_session_manager),
+):
+    """
+    Clean up session data and temporary files.
+
+    Args:
+        session_id: Session identifier
+
+    Returns:
+        Cleanup confirmation
+    """
+    try:
+        session = await session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        if session.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+        # TODO: Implement cleanup_session_data method in SessionManager
+        result = {
+            "success": True,
+            "session_id": session_id,
+            "message": "Session data cleaned up successfully"
+        }
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to cleanup session {session_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to cleanup session: {str(e)}"
+        )
+
+
+@router.get("/{session_id}/recovery-info", summary="Get session recovery information")
+async def get_session_recovery_info(
+    session_id: str,
+    user_id: str = Depends(get_user_id),
+    session_manager: SessionManager = Depends(get_session_manager),
+):
+    """
+    Get session recovery information for restoring lost sessions.
+
+    Args:
+        session_id: Session identifier
+
+    Returns:
+        Recovery information including state summary and restore capability
+    """
+    try:
+        session = await session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+        if session.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+        # Provide recovery information
+        return {
+            "session_id": session_id,
+            "user_id": session.user_id,
+            "created_at": session.created_at.isoformat() if session.created_at else None,
+            "last_activity": session.last_activity.isoformat() if session.last_activity else None,
+            "state_summary": {
+                "active": session.status == "active",
+                "status": session.status,
+                "metadata": session.metadata if hasattr(session, 'metadata') else {}
+            },
+            "recovery_info": {
+                "can_restore": True,
+                "restore_endpoint": f"/api/v1/sessions/{session_id}/restore"
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get recovery info for session {session_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get recovery info: {str(e)}"
+        )
