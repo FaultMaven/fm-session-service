@@ -5,6 +5,7 @@ Trust X-User-* headers from API Gateway - no JWT validation needed.
 """
 
 import logging
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Header, Query, status
@@ -517,3 +518,169 @@ async def get_session_stats(
     except Exception as e:
         logger.error(f"Failed to get stats for session {session_id}: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get stats")
+
+
+# =============================================================================
+# Message Management Endpoints (Phase 6.3)
+# =============================================================================
+
+@router.post("/{session_id}/messages", summary="Add message to session")
+async def add_session_message(
+    session_id: str,
+    message_data: dict,
+    user_id: str = Depends(get_user_id),
+    session_manager: SessionManager = Depends(get_session_manager),
+):
+    """Add a message to the session."""
+    try:
+        session = await session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Session {session_id} not found")
+        if session.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+        
+        # Add message
+        message = {
+            "role": message_data.get("role", "user"),
+            "content": message_data.get("content", ""),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        session.messages.append(message)
+        
+        # Update session
+        await session_manager.update_session(session_id, {"messages": session.messages})
+        
+        return {"session_id": session_id, "message": message, "total_messages": len(session.messages)}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to add message to session {session_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to add message")
+
+
+@router.get("/{session_id}/messages", summary="Get session messages")
+async def get_session_messages(
+    session_id: str,
+    user_id: str = Depends(get_user_id),
+    limit: int = Query(100, ge=1, le=500),
+    session_manager: SessionManager = Depends(get_session_manager),
+):
+    """Get all messages in a session."""
+    try:
+        session = await session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Session {session_id} not found")
+        if session.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+        
+        messages = session.messages[-limit:] if len(session.messages) > limit else session.messages
+        
+        return {
+            "session_id": session_id,
+            "messages": messages,
+            "total": len(session.messages),
+            "returned": len(messages)
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get messages for session {session_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get messages")
+
+
+# =============================================================================
+# Search & Archive Endpoints (Phase 6.3)
+# =============================================================================
+
+@router.post("/search", summary="Search sessions")
+async def search_sessions(
+    search_params: dict,
+    user_id: str = Depends(get_user_id),
+    session_manager: SessionManager = Depends(get_session_manager),
+):
+    """Search sessions with filters."""
+    try:
+        # Get all user sessions
+        all_sessions = await session_manager.list_user_sessions(user_id, limit=1000, offset=0)
+        
+        # Apply basic filters
+        filtered = all_sessions
+        
+        if "status" in search_params:
+            filtered = [s for s in filtered if s.status == search_params["status"]]
+        
+        if "query" in search_params:
+            query = search_params["query"].lower()
+            filtered = [s for s in filtered if query in s.title.lower()]
+        
+        return {
+            "sessions": [
+                {
+                    "session_id": s.session_id,
+                    "title": s.title,
+                    "status": s.status,
+                    "created_at": s.created_at,
+                    "message_count": len(s.messages)
+                }
+                for s in filtered[:search_params.get("limit", 50)]
+            ],
+            "total": len(filtered)
+        }
+    
+    except Exception as e:
+        logger.error(f"Failed to search sessions: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to search sessions")
+
+
+@router.post("/{session_id}/archive", summary="Archive session")
+async def archive_session(
+    session_id: str,
+    user_id: str = Depends(get_user_id),
+    session_manager: SessionManager = Depends(get_session_manager),
+):
+    """Archive a session."""
+    try:
+        session = await session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Session {session_id} not found")
+        if session.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+        
+        # Update status to archived
+        await session_manager.update_session(session_id, {"status": "archived"})
+        
+        return {"session_id": session_id, "status": "archived"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to archive session {session_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to archive session")
+
+
+@router.post("/{session_id}/restore", summary="Restore archived session")
+async def restore_session(
+    session_id: str,
+    user_id: str = Depends(get_user_id),
+    session_manager: SessionManager = Depends(get_session_manager),
+):
+    """Restore an archived session."""
+    try:
+        session = await session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Session {session_id} not found")
+        if session.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+        
+        # Update status back to active
+        await session_manager.update_session(session_id, {"status": "active"})
+        
+        return {"session_id": session_id, "status": "active"}
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to restore session {session_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to restore session")
