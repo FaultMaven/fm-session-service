@@ -22,7 +22,7 @@ from session_service.infrastructure.redis import get_redis_client
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/sessions", tags=["sessions"])
+router = APIRouter(prefix="/api/v1/sessions", tags=["sessions"])
 
 
 async def get_session_manager() -> SessionManager:
