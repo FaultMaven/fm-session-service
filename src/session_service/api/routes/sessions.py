@@ -443,3 +443,77 @@ async def list_sessions(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list sessions",
         )
+
+
+# =============================================================================
+# Statistics & Extended Endpoints (Phase 4)
+# =============================================================================
+
+@router.get("/{session_id}/cases", summary="Get cases for this session")
+async def get_session_cases(
+    session_id: str,
+    user_id: str = Depends(get_user_id),
+    session_manager: SessionManager = Depends(get_session_manager),
+):
+    """Get all cases associated with this session.
+    
+    Makes HTTP call to fm-case-service to fetch cases.
+    """
+    try:
+        # Verify session ownership
+        session = await session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Session {session_id} not found")
+        if session.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+        
+        # TODO: Call fm-case-service via HTTP client to get cases for this session
+        # For now, return placeholder
+        return {
+            "session_id": session_id,
+            "cases": [],
+            "total": 0
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get cases for session {session_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get cases")
+
+
+@router.get("/{session_id}/stats", summary="Get session statistics")
+async def get_session_stats(
+    session_id: str,
+    user_id: str = Depends(get_user_id),
+    session_manager: SessionManager = Depends(get_session_manager),
+):
+    """Get detailed statistics for a session."""
+    try:
+        session = await session_manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Session {session_id} not found")
+        if session.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+        
+        # Calculate stats
+        message_count = len(session.messages)
+        duration_seconds = None
+        if session.created_at and session.last_activity_at:
+            delta = session.last_activity_at - session.created_at
+            duration_seconds = int(delta.total_seconds())
+        
+        return {
+            "session_id": session_id,
+            "message_count": message_count,
+            "duration_seconds": duration_seconds,
+            "status": session.status,
+            "created_at": session.created_at,
+            "last_activity_at": session.last_activity_at,
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get stats for session {session_id}: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get stats")
