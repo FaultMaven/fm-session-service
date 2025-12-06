@@ -1,5 +1,8 @@
 # fm-session-service
 
+> **Part of [FaultMaven](https://github.com/FaultMaven/faultmaven)** —
+> The AI-Powered Troubleshooting Copilot
+
 **FaultMaven Session Management Microservice** - Open source Redis-backed session management for troubleshooting workflows.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
@@ -202,4 +205,9 @@ Apache 2.0 - See [LICENSE](LICENSE) for details.
 
 ## Contributing
 
-Contributions welcome! Please read our contributing guidelines and code of conduct.
+See our [Contributing Guide](https://github.com/FaultMaven/.github/blob/main/CONTRIBUTING.md) for detailed guidelines.
+
+## Support
+
+- **Discussions:** [GitHub Discussions](https://github.com/FaultMaven/faultmaven/discussions)
+- **Issues:** [GitHub Issues](https://github.com/FaultMaven/fm-session-service/issues)
