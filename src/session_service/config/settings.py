@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     redis_ssl: bool = False
     redis_decode_responses: bool = True
 
+    # Redis Sentinel configuration (for HA deployments)
+    redis_mode: str = "standalone"  # "standalone" or "sentinel"
+    redis_sentinel_hosts: str | None = None  # Comma-separated "host:port,host:port"
+    redis_master_set: str = "mymaster"  # Sentinel master set name
+
     # Session configuration
     session_ttl_days: int = 7
     session_ttl_seconds: int = 604800  # 7 days in seconds
