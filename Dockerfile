@@ -9,6 +9,9 @@ WORKDIR /app
 # Install poetry
 RUN pip install --no-cache-dir poetry==1.7.0
 
+# Copy fm-core-lib first (required dependency)
+COPY ../fm-core-lib/ ./fm-core-lib/
+
 # Copy dependency files
 COPY pyproject.toml poetry.lock* ./
 
@@ -23,6 +26,10 @@ WORKDIR /app
 # Copy requirements and install
 COPY --from=builder /app/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Install fm-core-lib
+COPY --from=builder /app/fm-core-lib/ ./fm-core-lib/
+RUN pip install --no-cache-dir ./fm-core-lib
 
 # Copy source code
 COPY src/ ./src/
