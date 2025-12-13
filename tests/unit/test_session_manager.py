@@ -79,10 +79,10 @@ class TestCreateSession:
             metadata={"type": "troubleshooting"},
         )
 
-        # Assert
+        # Assert - INTENTIONALLY BROKEN FOR VERIFICATION
         assert session is not None
         assert session.session_id is not None
-        assert session.user_id == "user-123"
+        assert session.user_id == "WRONG-USER"  # This will fail
         assert session.client_id == "client-abc"
         assert session.status == "active"
         assert session.metadata["type"] == "troubleshooting"
