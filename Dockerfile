@@ -13,7 +13,7 @@ RUN pip install --no-cache-dir poetry==1.7.0
 COPY fm-core-lib/ ./fm-core-lib/
 
 # Copy dependency files
-COPY fm-session-service/pyproject.toml fm-session-service/poetry.lock* ./
+COPY pyproject.toml poetry.lock* ./
 
 # Export dependencies to requirements.txt
 RUN poetry export -f requirements.txt --output requirements.txt --without-hashes --without dev
@@ -32,7 +32,7 @@ COPY --from=builder /app/fm-core-lib/ ./fm-core-lib/
 RUN pip install --no-cache-dir ./fm-core-lib
 
 # Copy source code
-COPY fm-session-service/src/ ./src/
+COPY src/ ./src/
 
 # Set PYTHONPATH to include src directory
 ENV PYTHONPATH=/app/src:$PYTHONPATH
