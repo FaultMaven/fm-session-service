@@ -91,7 +91,7 @@ async def root():
 
 
 # Include routers
-app.include_router(sessions_router, prefix=settings.api_v1_prefix, tags=["sessions"])
+app.include_router(sessions_router)
 
 
 # Global exception handler
