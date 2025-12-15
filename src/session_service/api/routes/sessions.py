@@ -450,14 +450,64 @@ async def list_sessions(
 # Statistics & Extended Endpoints (Phase 4)
 # =============================================================================
 
-@router.get("/{session_id}/cases", summary="Get cases for this session")
+@router.get(
+    "/{session_id}/cases",
+    summary="Get cases for this session",
+    description="""
+Retrieves all cases associated with this troubleshooting session from fm-case-service.
+
+**Workflow**:
+1. Validates session exists and user has access
+2. Makes HTTP call to fm-case-service with session_id filter
+3. Returns list of associated cases
+
+**Request Example**:
+```
+GET /api/v1/sessions/session_abc123/cases
+Headers:
+  X-User-ID: user_123
+```
+
+**Response Example**:
+```json
+{
+  "session_id": "session_abc123",
+  "cases": [
+    {
+      "case_id": "case_xyz789",
+      "title": "Database timeout investigation",
+      "status": "investigating",
+      "created_at": "2025-11-15T10:30:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+**Use Cases**:
+- Viewing all cases created during a troubleshooting session
+- Linking session investigations to persistent case tracking
+- Understanding case history for a session
+
+**Storage**: Redis (session data) + HTTP call to fm-case-service (case data)
+**Authorization**: Requires X-User-ID header; enforces user owns session
+**Rate Limits**: None (internal service-to-service call)
+    """,
+    responses={
+        200: {"description": "List of cases associated with this session"},
+        401: {"description": "X-User-ID header missing or invalid"},
+        403: {"description": "User not authorized to access this session"},
+        404: {"description": "Session not found"},
+        500: {"description": "Failed to retrieve cases from fm-case-service"}
+    }
+)
 async def get_session_cases(
     session_id: str,
     user_id: str = Depends(get_user_id),
     session_manager: SessionManager = Depends(get_session_manager),
 ):
     """Get all cases associated with this session.
-    
+
     Makes HTTP call to fm-case-service to fetch cases.
     """
     try:
@@ -483,7 +533,55 @@ async def get_session_cases(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to get cases")
 
 
-@router.get("/{session_id}/stats", summary="Get session statistics")
+@router.get(
+    "/{session_id}/stats",
+    summary="Get session statistics",
+    description="""
+Retrieves detailed statistics and metrics for a troubleshooting session.
+
+**Workflow**:
+1. Validates session exists and user has access
+2. Calculates session duration from created_at to last_activity_at
+3. Counts total messages in session
+4. Returns comprehensive statistics object
+
+**Request Example**:
+```
+GET /api/v1/sessions/session_abc123/stats
+Headers:
+  X-User-ID: user_123
+```
+
+**Response Example**:
+```json
+{
+  "session_id": "session_abc123",
+  "message_count": 42,
+  "duration_seconds": 3600,
+  "status": "in_progress",
+  "created_at": "2025-11-15T10:30:00Z",
+  "last_activity_at": "2025-11-15T11:30:00Z"
+}
+```
+
+**Use Cases**:
+- Monitoring session activity and engagement
+- Tracking investigation duration for billing or analytics
+- Identifying stale or abandoned sessions
+- Generating session activity reports
+
+**Storage**: Redis (session data read-only, no writes)
+**Authorization**: Requires X-User-ID header; enforces user owns session
+**Rate Limits**: None
+    """,
+    responses={
+        200: {"description": "Session statistics retrieved successfully"},
+        401: {"description": "X-User-ID header missing or invalid"},
+        403: {"description": "User not authorized to access this session"},
+        404: {"description": "Session not found"},
+        500: {"description": "Failed to calculate session statistics"}
+    }
+)
 async def get_session_stats(
     session_id: str,
     user_id: str = Depends(get_user_id),
@@ -524,7 +622,63 @@ async def get_session_stats(
 # Message Management Endpoints (Phase 6.3)
 # =============================================================================
 
-@router.post("/{session_id}/messages", summary="Add message to session")
+@router.post(
+    "/{session_id}/messages",
+    summary="Add message to session",
+    description="""
+Appends a new message to the session's conversation history (user or assistant message).
+
+**Workflow**:
+1. Validates session exists and user has access
+2. Creates message object with role, content, and timestamp
+3. Appends message to session.messages array
+4. Updates session in Redis storage
+5. Returns message confirmation with updated message count
+
+**Request Example**:
+```
+POST /api/v1/sessions/session_abc123/messages
+Headers:
+  X-User-ID: user_123
+  Content-Type: application/json
+Body:
+{
+  "role": "user",
+  "content": "What's causing the database timeout?"
+}
+```
+
+**Response Example**:
+```json
+{
+  "session_id": "session_abc123",
+  "message": {
+    "role": "user",
+    "content": "What's causing the database timeout?",
+    "timestamp": "2025-11-15T10:35:00Z"
+  },
+  "total_messages": 43
+}
+```
+
+**Use Cases**:
+- Adding user questions to session conversation
+- Storing AI assistant responses in session
+- Building chat history for troubleshooting context
+- Tracking conversation flow during investigation
+
+**Storage**: Redis (writes to session.messages array)
+**Authorization**: Requires X-User-ID header; enforces user owns session
+**Rate Limits**: None (internal service call)
+    """,
+    responses={
+        200: {"description": "Message added successfully to session"},
+        401: {"description": "X-User-ID header missing or invalid"},
+        403: {"description": "User not authorized to modify this session"},
+        404: {"description": "Session not found"},
+        500: {"description": "Failed to add message to session"}
+    }
+)
 async def add_session_message(
     session_id: str,
     message_data: dict,
@@ -559,7 +713,67 @@ async def add_session_message(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to add message")
 
 
-@router.get("/{session_id}/messages", summary="Get session messages")
+@router.get(
+    "/{session_id}/messages",
+    summary="Get session messages",
+    description="""
+Retrieves the conversation message history for a troubleshooting session with pagination.
+
+**Workflow**:
+1. Validates session exists and user has access
+2. Retrieves session from Redis storage
+3. Applies limit to return most recent N messages
+4. Returns messages array with metadata (total count, returned count)
+
+**Request Example**:
+```
+GET /api/v1/sessions/session_abc123/messages?limit=50
+Headers:
+  X-User-ID: user_123
+```
+
+**Response Example**:
+```json
+{
+  "session_id": "session_abc123",
+  "messages": [
+    {
+      "role": "user",
+      "content": "What's causing the timeout?",
+      "timestamp": "2025-11-15T10:30:00Z"
+    },
+    {
+      "role": "assistant",
+      "content": "Let me investigate...",
+      "timestamp": "2025-11-15T10:30:05Z"
+    }
+  ],
+  "total": 42,
+  "returned": 2
+}
+```
+
+**Query Parameters**:
+- `limit`: Maximum messages to return (1-500, default 100). Returns most recent messages.
+
+**Use Cases**:
+- Displaying chat history in UI
+- Resuming troubleshooting session with context
+- Exporting conversation for documentation
+- Analyzing troubleshooting patterns
+
+**Storage**: Redis (session data read-only)
+**Authorization**: Requires X-User-ID header; enforces user owns session
+**Rate Limits**: None
+    """,
+    responses={
+        200: {"description": "Session messages retrieved successfully"},
+        401: {"description": "X-User-ID header missing or invalid"},
+        403: {"description": "User not authorized to access this session"},
+        404: {"description": "Session not found"},
+        500: {"description": "Failed to retrieve session messages"}
+    }
+)
 async def get_session_messages(
     session_id: str,
     user_id: str = Depends(get_user_id),
@@ -594,7 +808,70 @@ async def get_session_messages(
 # Search & Archive Endpoints (Phase 6.3)
 # =============================================================================
 
-@router.post("/search", summary="Search sessions")
+@router.post(
+    "/search",
+    summary="Search sessions",
+    description="""
+Searches and filters the user's troubleshooting sessions based on status, title query, and other criteria.
+
+**Workflow**:
+1. Retrieves all user sessions from Redis (up to 1000 sessions)
+2. Applies status filter if provided (active, in_progress, completed, archived, abandoned)
+3. Applies text query filter on session titles (case-insensitive substring match)
+4. Limits results to requested page size
+5. Returns matching sessions with metadata
+
+**Request Example**:
+```
+POST /api/v1/sessions/search
+Headers:
+  X-User-ID: user_123
+  Content-Type: application/json
+Body:
+{
+  "status": "in_progress",
+  "query": "database",
+  "limit": 20
+}
+```
+
+**Response Example**:
+```json
+{
+  "sessions": [
+    {
+      "session_id": "session_abc123",
+      "title": "Database timeout investigation",
+      "status": "in_progress",
+      "created_at": "2025-11-15T10:30:00Z",
+      "message_count": 42
+    }
+  ],
+  "total": 1
+}
+```
+
+**Search Parameters**:
+- `status` (optional): Filter by session status
+- `query` (optional): Text search in session titles
+- `limit` (optional): Maximum results to return (default 50)
+
+**Use Cases**:
+- Finding active investigations by keyword
+- Listing sessions by status (e.g., all archived sessions)
+- Searching for sessions related to specific issues
+- Building custom session dashboards
+
+**Storage**: Redis (read-only search across user's sessions)
+**Authorization**: Requires X-User-ID header; only searches user's own sessions
+**Rate Limits**: None (searches limited to 1000 sessions max)
+    """,
+    responses={
+        200: {"description": "Search completed successfully with matching sessions"},
+        401: {"description": "X-User-ID header missing or invalid"},
+        500: {"description": "Failed to search sessions"}
+    }
+)
 async def search_sessions(
     search_params: dict,
     user_id: str = Depends(get_user_id),
@@ -634,7 +911,57 @@ async def search_sessions(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to search sessions")
 
 
-@router.post("/{session_id}/archive", summary="Archive session")
+@router.post(
+    "/{session_id}/archive",
+    summary="Archive session",
+    description="""
+Archives a troubleshooting session by changing its status to 'archived', marking it as inactive but preserved.
+
+**Workflow**:
+1. Validates session exists and user has access
+2. Updates session status to 'archived' in Redis
+3. Preserves all session data (messages, metadata, timestamps)
+4. Returns confirmation with new status
+
+**Request Example**:
+```
+POST /api/v1/sessions/session_abc123/archive
+Headers:
+  X-User-ID: user_123
+```
+
+**Response Example**:
+```json
+{
+  "session_id": "session_abc123",
+  "status": "archived"
+}
+```
+
+**Use Cases**:
+- Archiving completed investigations for reference
+- Cleaning up inactive sessions without deleting data
+- Organizing session workspace (hide old sessions from active list)
+- Preserving session history for compliance or audit
+
+**Behavior**:
+- Session data remains in Redis (not deleted)
+- Session can be restored later via /restore endpoint
+- Archived sessions excluded from default session lists
+- All messages and metadata preserved
+
+**Storage**: Redis (updates session.status field)
+**Authorization**: Requires X-User-ID header; enforces user owns session
+**Rate Limits**: None
+    """,
+    responses={
+        200: {"description": "Session archived successfully"},
+        401: {"description": "X-User-ID header missing or invalid"},
+        403: {"description": "User not authorized to archive this session"},
+        404: {"description": "Session not found"},
+        500: {"description": "Failed to archive session"}
+    }
+)
 async def archive_session(
     session_id: str,
     user_id: str = Depends(get_user_id),
@@ -660,7 +987,57 @@ async def archive_session(
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to archive session")
 
 
-@router.post("/{session_id}/restore", summary="Restore archived session")
+@router.post(
+    "/{session_id}/restore",
+    summary="Restore archived session",
+    description="""
+Restores an archived troubleshooting session by changing its status back to 'active', making it available again.
+
+**Workflow**:
+1. Validates session exists and user has access
+2. Updates session status from 'archived' to 'active' in Redis
+3. Session becomes visible in default session lists again
+4. Returns confirmation with new status
+
+**Request Example**:
+```
+POST /api/v1/sessions/session_abc123/restore
+Headers:
+  X-User-ID: user_123
+```
+
+**Response Example**:
+```json
+{
+  "session_id": "session_abc123",
+  "status": "active"
+}
+```
+
+**Use Cases**:
+- Resuming investigation from archived session
+- Re-opening completed troubleshooting for follow-up
+- Unarchiving sessions mistakenly archived
+- Bringing back reference sessions for similar issues
+
+**Behavior**:
+- All session data restored to active state (messages, metadata intact)
+- Session appears in default session lists
+- Can continue adding messages and updating session
+- No data loss during archive/restore cycle
+
+**Storage**: Redis (updates session.status field)
+**Authorization**: Requires X-User-ID header; enforces user owns session
+**Rate Limits**: None
+    """,
+    responses={
+        200: {"description": "Session restored successfully"},
+        401: {"description": "X-User-ID header missing or invalid"},
+        403: {"description": "User not authorized to restore this session"},
+        404: {"description": "Session not found"},
+        500: {"description": "Failed to restore session"}
+    }
+)
 async def restore_session(
     session_id: str,
     user_id: str = Depends(get_user_id),
